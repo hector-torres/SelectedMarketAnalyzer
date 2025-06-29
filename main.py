@@ -14,7 +14,7 @@ def main():
 
     analyzer = MarketAnalyzer()
 
-    # Step 1: select an event (market_event_ticker) from the DB
+    # Step 1: select an event
     events = fetch_event_tickers()
     if not events:
         st.error("No event tickers found in the database.")
@@ -27,7 +27,9 @@ def main():
         st.warning(f"No markets found for event {selected_event}.")
         return
     selected_market = st.selectbox("Select Market:", options=list(markets_map.keys()))
-    series_id = markets_map[selected_market]
+    market_info = markets_map[selected_market]
+    series_id = market_info["series_id"]
+    market_title = market_info.get("title", selected_market)
 
     # Interval and date range
     interval = st.selectbox("Interval (minutes):", [1, 60, 1440], index=1)
@@ -54,7 +56,11 @@ def main():
         st.warning("No data for the selected market in this date range.")
         return
 
-    # CSV download button
+    # Create and display chart with API title
+    fig = analyzer.create_price_action_figure(df, chart_title=market_title)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # CSV download option
     csv_dir = os.getenv("CSVS_URL", "./csvs")
     file_name = f"{selected_market}-{start_date}_{end_date}.csv"
     csv_path = os.path.join(csv_dir, file_name)
@@ -62,10 +68,6 @@ def main():
         os.makedirs(csv_dir, exist_ok=True)
         df.to_csv(csv_path)
         st.success(f"CSV saved to {csv_path}")
-
-    # Plot
-    fig = analyzer.create_price_action_figure(df)
-    st.plotly_chart(fig, use_container_width=True)
 
 if __name__ == "__main__":
     main()

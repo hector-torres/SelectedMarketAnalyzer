@@ -3,7 +3,7 @@ import time
 import logging
 import pandas as pd
 import requests
-from typing import Dict
+from typing import Dict, Any
 
 # Configure debug logging based on DEBUG env var
 DEBUG = os.getenv("DEBUG", "0") == "1"
@@ -16,19 +16,25 @@ class MarketAnalyzer:
     MARKET_LISTING_URL = "https://api.elections.kalshi.com/trade-api/v2/markets"
     SERIES_URL = "https://api.elections.kalshi.com/trade-api/v2/series"
 
-    def fetch_markets_for_event(self, event_ticker: str) -> Dict[str, str]:
+    def fetch_markets_for_event(self, event_ticker: str) -> Dict[str, Dict[str, Any]]:
         """
-        Retrieves all market tickers and their corresponding series IDs (event_ticker) for a given event_ticker.
+        Retrieves all market info for a given event_ticker.
+        Returns mapping ticker -> {"series_id": ..., "title": ...}.
         """
         url = f"{self.MARKET_LISTING_URL}?event_ticker={event_ticker}"
         if DEBUG:
             logger.debug(f"Listing markets for event: {url}")
         resp = requests.get(url)
         resp.raise_for_status()
-        markets = resp.json().get("markets", [])
-        # Map each market ticker to its event_ticker (series_id)
-        return {m["ticker"]: m.get("event_ticker") for m in markets if m.get("ticker")}
-
+        data = resp.json().get("markets", [])
+        result = {}
+        for m in data:
+            ticker = m.get("ticker")
+            series_id = m.get("event_ticker")
+            title = m.get("title")
+            if ticker and series_id:
+                result[ticker] = {"series_id": series_id, "title": title}
+        return result
 
     def get_candlestick_dataframe(
         self,
@@ -39,7 +45,7 @@ class MarketAnalyzer:
         end_ts: int = None,
     ) -> pd.DataFrame:
         """
-        Fetches candlestick data for the specified market under its series.
+        Fetches candlestick data for a market under its series.
         """
         now = int(time.time())
         end_ts = end_ts or now
@@ -68,7 +74,7 @@ class MarketAnalyzer:
             return df
         return df.set_index("time").sort_index()
 
-    def create_price_action_figure(self, df: pd.DataFrame):
+    def create_price_action_figure(self, df: pd.DataFrame, chart_title: str):
         """
         Creates a Plotly line chart showing price action for each ticker.
         """
@@ -83,15 +89,15 @@ class MarketAnalyzer:
                 name=ticker,
                 line=dict(width=2, shape="hvh"),
                 hovertemplate=(
-                    f"<b>Ticker:</b> {ticker}<br>"
-                    "<b>Time:</b> %{x}<br>"
-                    "<b>Price:</b> %{y:.2f}<br>"
+                    f"<b>Ticker:</b> {ticker}<br>" +
+                    "<b>Time:</b> %{x}<br>" +
+                    "<b>Price:</b> %{y:.2f}<br>" +
                     "<extra></extra>"
                 )
             ))
         fig.update_layout(
             template="plotly_dark",
-            title="Price Line Chart by Ticker",
+            title=chart_title,
             xaxis=dict(title="Time"),
             yaxis=dict(title="Price", range=[0, 100]),
             showlegend=True,
